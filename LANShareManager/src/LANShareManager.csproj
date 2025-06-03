@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>LANShareManager</AssemblyName>
+    <RootNamespace>LANShareManager</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+    <Page Include="Views\MainWindow.xaml" />
+    <Page Include="Views\DashboardView.xaml" />
+    <Page Include="Views\FolderSharingView.xaml" />
+    <Page Include="Views\FilePermissionsView.xaml" />
+    <Page Include="Views\PrinterSharingView.xaml" />
+    <Page Include="Views\SettingsView.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App.xaml.cs" />
+    <Compile Include="Views\MainWindow.xaml.cs" />
+    <Compile Include="ViewModels\MainViewModel.cs" />
+    <Compile Include="Services\NetworkShareService.cs" />
+    <Compile Include="Services\FilePermissionService.cs" />
+    <Compile Include="Services\PrinterShareService.cs" />
+    <Compile Include="Views\DashboardView.xaml.cs" />
+    <Compile Include="Views\FolderSharingView.xaml.cs" />
+    <Compile Include="Views\FilePermissionsView.xaml.cs" />
+    <Compile Include="Views\PrinterSharingView.xaml.cs" />
+    <Compile Include="Views\SettingsView.xaml.cs" />
+  </ItemGroup>
+</Project>
