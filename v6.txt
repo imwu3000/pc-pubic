@@ -1,0 +1,772 @@
+def add_quick_folder(self, folder_type):
+        """添import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+import threading
+import http.server
+import socketserver
+import os
+import socket
+import webbrowser
+from urllib.parse import quote, unquote
+import json
+import sys
+from pathlib import Path
+import configparser
+import hashlib
+import time
+import mimetypes
+import zipfile
+import tempfile
+import shutil
+from datetime import datetime
+
+class FolderShareApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("局域网文件夹共享工具 v2.0")
+        self.root.geometry("900x700")
+        self.root.resizable(True, True)
+        
+        # 设置应用图标和样式
+        self.setup_styles()
+        
+        # 共享状态
+        self.is_sharing = False
+        self.server = None
+        self.server_thread = None
+        self.shared_folders = []
+        self.port = 8080
+        self.access_password = ""
+        self.enable_upload = False
+        self.access_log = []
+        self.config_file = "share_config.ini"
+        
+        # 加载配置
+        self.load_config()
+        
+        # 创建GUI
+        self.create_widgets()
+        
+        # 绑定窗口关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def setup_styles(self):
+        """设置界面样式"""
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        # 配置颜色主题
+        style.configure('Title.TLabel', font=('Microsoft YaHei', 16, 'bold'))
+        style.configure('Header.TLabel', font=('Microsoft YaHei', 10, 'bold'))
+        style.configure('Status.TLabel', font=('Microsoft YaHei', 9))
+    
+    def create_widgets(self):
+        """创建主界面控件"""
+        # 主标题
+        title_label = ttk.Label(self.root, text="局域网文件夹共享工具 v2.0", style='Title.TLabel')
+        title_label.pack(pady=10)
+        
+        # 创建主框架
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # 创建Notebook（选项卡）
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # 文件共享选项卡
+        self.create_share_tab(notebook)
+        
+        # 安全设置选项卡
+        self.create_security_tab(notebook)
+        
+        # 访问日志选项卡
+        self.create_log_tab(notebook)
+        
+        # 设置选项卡
+        self.create_settings_tab(notebook)
+    
+    def create_share_tab(self, notebook):
+        """创建文件共享选项卡"""
+        share_frame = ttk.Frame(notebook)
+        notebook.add(share_frame, text="文件共享")
+        
+        # 左侧面板 - 文件夹管理
+        left_frame = ttk.LabelFrame(share_frame, text="文件夹管理", padding=10)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5), pady=5)
+        
+        # 文件夹列表
+        folders_label = ttk.Label(left_frame, text="已选择的共享文件夹:", style='Header.TLabel')
+        folders_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # 文件夹列表框架
+        list_frame = ttk.Frame(left_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # 文件夹列表
+        self.folders_listbox = tk.Listbox(list_frame, selectmode=tk.SINGLE, font=('Consolas', 9))
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.folders_listbox.yview)
+        self.folders_listbox.configure(yscrollcommand=scrollbar.set)
+        
+        self.folders_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 按钮框架
+        btn_frame = ttk.Frame(left_frame)
+        btn_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.add_btn = ttk.Button(btn_frame, text="添加文件夹", command=self.add_folder)
+        self.add_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.remove_btn = ttk.Button(btn_frame, text="移除选中", command=self.remove_folder)
+        self.remove_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.clear_btn = ttk.Button(btn_frame, text="清空列表", command=self.clear_folders)
+        self.clear_btn.pack(side=tk.LEFT)
+        
+        # 快捷操作
+        quick_frame = ttk.LabelFrame(left_frame, text="快捷操作", padding=5)
+        quick_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        quick_btn_frame = ttk.Frame(quick_frame)
+        quick_btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(quick_btn_frame, text="添加桌面", command=lambda: self.add_quick_folder("Desktop")).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_btn_frame, text="添加文档", command=lambda: self.add_quick_folder("Documents")).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_btn_frame, text="添加下载", command=lambda: self.add_quick_folder("Downloads")).pack(side=tk.LEFT)
+        
+        # 右侧面板 - 控制和状态
+        right_frame = ttk.LabelFrame(share_frame, text="控制面板", padding=10)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+        
+        # 服务器设置
+        server_frame = ttk.LabelFrame(right_frame, text="服务器设置", padding=10)
+        server_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 端口设置
+        port_frame = ttk.Frame(server_frame)
+        port_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(port_frame, text="端口号:").pack(side=tk.LEFT)
+        self.port_var = tk.StringVar(value=str(self.port))
+        port_entry = ttk.Entry(port_frame, textvariable=self.port_var, width=8)
+        port_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        # 上传功能开关
+        self.upload_var = tk.BooleanVar(value=self.enable_upload)
+        upload_check = ttk.Checkbutton(server_frame, text="允许上传文件", variable=self.upload_var)
+        upload_check.pack(anchor=tk.W, pady=(0, 5))
+        
+        # 控制按钮
+        control_frame = ttk.Frame(server_frame)
+        control_frame.pack(fill=tk.X)
+        
+        self.start_btn = ttk.Button(control_frame, text="🚀 开始共享", command=self.start_sharing)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.stop_btn = ttk.Button(control_frame, text="⏹️ 停止共享", command=self.stop_sharing, state=tk.DISABLED)
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.open_btn = ttk.Button(control_frame, text="🌐 打开浏览器", command=self.open_browser, state=tk.DISABLED)
+        self.open_btn.pack(side=tk.LEFT)
+        
+        # 状态信息
+        status_frame = ttk.LabelFrame(right_frame, text="状态信息", padding=10)
+        status_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 状态显示
+        self.status_var = tk.StringVar(value="就绪")
+        status_label = ttk.Label(status_frame, text="状态:", style='Header.TLabel')
+        status_label.pack(anchor=tk.W)
+        
+        self.status_display = ttk.Label(status_frame, textvariable=self.status_var, style='Status.TLabel')
+        self.status_display.pack(anchor=tk.W, pady=(0, 10))
+        
+        # IP地址显示
+        ip_label = ttk.Label(status_frame, text="本机IP地址:", style='Header.TLabel')
+        ip_label.pack(anchor=tk.W)
+        
+        self.ip_var = tk.StringVar(value=self.get_local_ip())
+        ip_display = ttk.Label(status_frame, textvariable=self.ip_var, style='Status.TLabel')
+        ip_display.pack(anchor=tk.W, pady=(0, 10))
+        
+        # 访问地址显示
+        self.url_label = ttk.Label(status_frame, text="访问地址:", style='Header.TLabel')
+        self.url_label.pack(anchor=tk.W)
+        
+        self.url_var = tk.StringVar(value="未启动服务")
+        self.url_display = ttk.Label(status_frame, textvariable=self.url_var, style='Status.TLabel', foreground='blue', cursor='hand2')
+        self.url_display.pack(anchor=tk.W, pady=(0, 10))
+        self.url_display.bind("<Button-1>", lambda e: self.open_browser())
+        
+        # 实时统计
+        stats_label = ttk.Label(status_frame, text="访问统计:", style='Header.TLabel')
+        stats_label.pack(anchor=tk.W)
+        
+        self.stats_var = tk.StringVar(value="访问次数: 0 | 下载次数: 0")
+        stats_display = ttk.Label(status_frame, textvariable=self.stats_var, style='Status.TLabel')
+        stats_display.pack(anchor=tk.W, pady=(0, 10))
+        
+        # 运行日志
+        log_label = ttk.Label(status_frame, text="运行日志:", style='Header.TLabel')
+        log_label.pack(anchor=tk.W)
+        
+        self.log_text = scrolledtext.ScrolledText(status_frame, height=10, width=35, font=('Consolas', 8))
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        
+        self.log("程序启动完成")
+        self.log(f"本机IP地址: {self.get_local_ip()}")
+    
+    def create_security_tab(self, notebook):
+        """创建安全设置选项卡"""
+        security_frame = ttk.Frame(notebook)
+        notebook.add(security_frame, text="安全设置")
+        
+        # 密码保护
+        password_frame = ttk.LabelFrame(security_frame, text="访问密码保护", padding=15)
+        password_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.password_enabled_var = tk.BooleanVar(value=bool(self.access_password))
+        password_check = ttk.Checkbutton(password_frame, text="启用密码保护", variable=self.password_enabled_var, command=self.toggle_password)
+        password_check.pack(anchor=tk.W, pady=(0, 10))
+        
+        password_input_frame = ttk.Frame(password_frame)
+        password_input_frame.pack(fill=tk.X)
+        
+        ttk.Label(password_input_frame, text="访问密码:").pack(side=tk.LEFT)
+        self.password_var = tk.StringVar(value=self.access_password)
+        self.password_entry = ttk.Entry(password_input_frame, textvariable=self.password_var, show="*", width=20)
+        self.password_entry.pack(side=tk.LEFT, padx=(10, 5))
+        
+        ttk.Button(password_input_frame, text="生成随机密码", command=self.generate_password).pack(side=tk.LEFT, padx=(5, 0))
+        
+        # IP访问控制
+        ip_frame = ttk.LabelFrame(security_frame, text="IP访问控制", padding=15)
+        ip_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.ip_filter_var = tk.BooleanVar()
+        ip_check = ttk.Checkbutton(ip_frame, text="启用IP白名单", variable=self.ip_filter_var)
+        ip_check.pack(anchor=tk.W, pady=(0, 10))
+        
+        ttk.Label(ip_frame, text="允许访问的IP地址（每行一个）:").pack(anchor=tk.W)
+        self.ip_list_text = scrolledtext.ScrolledText(ip_frame, height=6, width=50)
+        self.ip_list_text.pack(fill=tk.X, pady=(5, 0))
+        self.ip_list_text.insert(tk.END, "192.168.1.0/24\n127.0.0.1\n")
+        
+        # 访问限制
+        limit_frame = ttk.LabelFrame(security_frame, text="访问限制", padding=15)
+        limit_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 最大连接数
+        conn_frame = ttk.Frame(limit_frame)
+        conn_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(conn_frame, text="最大同时连接数:").pack(side=tk.LEFT)
+        self.max_connections_var = tk.StringVar(value="10")
+        ttk.Entry(conn_frame, textvariable=self.max_connections_var, width=5).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # 下载速度限制
+        speed_frame = ttk.Frame(limit_frame)
+        speed_frame.pack(fill=tk.X)
+        
+        ttk.Label(speed_frame, text="下载速度限制 (KB/s):").pack(side=tk.LEFT)
+        self.speed_limit_var = tk.StringVar(value="0")
+        ttk.Entry(speed_frame, textvariable=self.speed_limit_var, width=8).pack(side=tk.LEFT, padx=(10, 5))
+        ttk.Label(speed_frame, text="(0表示无限制)").pack(side=tk.LEFT)
+    
+    def create_log_tab(self, notebook):
+        """创建访问日志选项卡"""
+        log_frame = ttk.Frame(notebook)
+        notebook.add(log_frame, text="访问日志")
+        
+        # 日志控制
+        control_frame = ttk.Frame(log_frame)
+        control_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Button(control_frame, text="🔄 刷新日志", command=self.refresh_access_log).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(control_frame, text="🗑️ 清空日志", command=self.clear_access_log).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(control_frame, text="💾 导出日志", command=self.export_access_log).pack(side=tk.LEFT)
+        
+        # 日志显示
+        log_display_frame = ttk.LabelFrame(log_frame, text="访问记录", padding=10)
+        log_display_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        
+        # 创建Treeview显示日志
+        columns = ("时间", "IP地址", "操作", "路径", "状态")
+        self.access_log_tree = ttk.Treeview(log_display_frame, columns=columns, show="headings", height=15)
+        
+        for col in columns:
+            self.access_log_tree.heading(col, text=col)
+            self.access_log_tree.column(col, width=120 if col == "时间" else 100)
+        
+        log_scrollbar = ttk.Scrollbar(log_display_frame, orient=tk.VERTICAL, command=self.access_log_tree.yview)
+        self.access_log_tree.configure(yscrollcommand=log_scrollbar.set)
+        
+        self.access_log_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    def create_settings_tab(self, notebook):
+        """创建设置选项卡"""
+        settings_frame = ttk.Frame(notebook)
+        notebook.add(settings_frame, text="设置")
+        
+        # 界面设置
+        ui_frame = ttk.LabelFrame(settings_frame, text="界面设置", padding=15)
+        ui_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 主题选择
+        theme_frame = ttk.Frame(ui_frame)
+        theme_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(theme_frame, text="界面主题:").pack(side=tk.LEFT)
+        self.theme_var = tk.StringVar(value="默认")
+        theme_combo = ttk.Combobox(theme_frame, textvariable=self.theme_var, values=["默认", "深色", "浅色"], state="readonly", width=10)
+        theme_combo.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # 自动保存设置
+        self.auto_save_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(ui_frame, text="自动保存配置", variable=self.auto_save_var).pack(anchor=tk.W)
+        
+        # 启动设置
+        startup_frame = ttk.LabelFrame(settings_frame, text="启动设置", padding=15)
+        startup_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.auto_start_var = tk.BooleanVar()
+        ttk.Checkbutton(startup_frame, text="程序启动时自动开始共享", variable=self.auto_start_var).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.minimize_start_var = tk.BooleanVar()
+        ttk.Checkbutton(startup_frame, text="启动时最小化到系统托盘", variable=self.minimize_start_var).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.remember_folders_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(startup_frame, text="记住上次的共享文件夹", variable=self.remember_folders_var).pack(anchor=tk.W)
+        
+        # 高级设置
+        advanced_frame = ttk.LabelFrame(settings_frame, text="高级设置", padding=15)
+        advanced_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # 缓存设置
+        cache_frame = ttk.Frame(advanced_frame)
+        cache_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(cache_frame, text="文件列表缓存时间(秒):").pack(side=tk.LEFT)
+        self.cache_time_var = tk.StringVar(value="30")
+        ttk.Entry(cache_frame, textvariable=self.cache_time_var, width=5).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # 压缩下载
+        self.enable_zip_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(advanced_frame, text="启用文件夹压缩下载", variable=self.enable_zip_var).pack(anchor=tk.W, pady=(0, 5))
+        
+        # 操作按钮
+        btn_frame = ttk.Frame(settings_frame)
+        btn_frame.pack(fill=tk.X, padx=10, pady=20)
+        
+        ttk.Button(btn_frame, text="💾 保存配置", command=self.save_config).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="🔄 重置配置", command=self.reset_config).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="📁 打开配置文件夹", command=self.open_config_folder).pack(side=tk.LEFT)
+        """获取本机IP地址"""
+        try:
+            # 连接到一个远程地址来获取本机IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return "127.0.0.1"
+    
+    def log(self, message):
+        """添加日志信息"""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_message = f"[{timestamp}] {message}\n"
+        
+        self.log_text.insert(tk.END, log_message)
+        self.log_text.see(tk.END)
+        self.root.update_idletasks()
+    
+    def add_folder(self):
+        """添加文件夹到共享列表"""
+        if self.is_sharing:
+            messagebox.showwarning("警告", "请先停止共享后再添加文件夹")
+            return
+        
+        folder_path = filedialog.askdirectory(title="选择要共享的文件夹")
+        if folder_path:
+            if folder_path not in self.shared_folders:
+                self.shared_folders.append(folder_path)
+                self.folders_listbox.insert(tk.END, folder_path)
+                self.log(f"添加共享文件夹: {folder_path}")
+            else:
+                messagebox.showinfo("提示", "该文件夹已经在共享列表中")
+    
+    def remove_folder(self):
+        """移除选中的文件夹"""
+        if self.is_sharing:
+            messagebox.showwarning("警告", "请先停止共享后再移除文件夹")
+            return
+        
+        selection = self.folders_listbox.curselection()
+        if selection:
+            index = selection[0]
+            folder_path = self.shared_folders[index]
+            self.shared_folders.pop(index)
+            self.folders_listbox.delete(index)
+            self.log(f"移除共享文件夹: {folder_path}")
+        else:
+            messagebox.showinfo("提示", "请先选择要移除的文件夹")
+    
+    def clear_folders(self):
+        """清空文件夹列表"""
+        if self.is_sharing:
+            messagebox.showwarning("警告", "请先停止共享后再清空列表")
+            return
+        
+        if self.shared_folders:
+            self.shared_folders.clear()
+            self.folders_listbox.delete(0, tk.END)
+            self.log("清空共享文件夹列表")
+    
+    def start_sharing(self):
+        """开始共享"""
+        if not self.shared_folders:
+            messagebox.showwarning("警告", "请先添加要共享的文件夹")
+            return
+        
+        try:
+            self.port = int(self.port_var.get())
+            if self.port < 1024 or self.port > 65535:
+                raise ValueError("端口号范围应为1024-65535")
+        except ValueError as e:
+            messagebox.showerror("错误", f"端口号设置错误: {e}")
+            return
+        
+        try:
+            # 创建HTTP服务器
+            self.server = CustomHTTPServer(('', self.port), CustomHTTPRequestHandler)
+            self.server.shared_folders = self.shared_folders
+            self.server.app_ref = self
+            
+            # 在新线程中启动服务器
+            self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+            self.server_thread.start()
+            
+            self.is_sharing = True
+            self.start_btn.config(state=tk.DISABLED)
+            self.stop_btn.config(state=tk.NORMAL)
+            self.open_btn.config(state=tk.NORMAL)
+            
+            url = f"http://{self.get_local_ip()}:{self.port}"
+            self.url_var.set(url)
+            self.status_var.set("共享中...")
+            
+            self.log(f"开始共享服务，端口: {self.port}")
+            self.log(f"访问地址: {url}")
+            self.log(f"共享文件夹数量: {len(self.shared_folders)}")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"启动共享服务失败: {e}")
+            self.log(f"启动失败: {e}")
+    
+    def stop_sharing(self):
+        """停止共享"""
+        if self.server:
+            self.server.shutdown()
+            self.server = None
+        
+        if self.server_thread:
+            self.server_thread = None
+        
+        self.is_sharing = False
+        self.start_btn.config(state=tk.NORMAL)
+        self.stop_btn.config(state=tk.DISABLED)
+        self.open_btn.config(state=tk.DISABLED)
+        
+        self.url_var.set("未启动服务")
+        self.status_var.set("已停止")
+        
+        self.log("停止共享服务")
+    
+    def open_browser(self):
+        """打开浏览器访问共享"""
+        if self.is_sharing:
+            url = f"http://{self.get_local_ip()}:{self.port}"
+            webbrowser.open(url)
+            self.log("打开浏览器访问共享")
+    
+    def on_closing(self):
+        """程序关闭时的处理"""
+        if self.is_sharing:
+            self.stop_sharing()
+        self.root.destroy()
+
+class CustomHTTPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        """处理GET请求"""
+        try:
+            if self.path == '/' or self.path == '':
+                self.send_folder_list()
+            elif self.path.startswith('/folder/'):
+                folder_index = int(self.path.split('/')[2])
+                if 0 <= folder_index < len(self.server.shared_folders):
+                    self.browse_folder(self.server.shared_folders[folder_index])
+                else:
+                    self.send_error(404, "文件夹不存在")
+            elif self.path.startswith('/download/'):
+                parts = self.path.split('/', 3)
+                if len(parts) >= 4:
+                    folder_index = int(parts[2])
+                    file_path = parts[3]
+                    if 0 <= folder_index < len(self.server.shared_folders):
+                        full_path = os.path.join(self.server.shared_folders[folder_index], file_path)
+                        self.download_file(full_path)
+                    else:
+                        self.send_error(404, "文件不存在")
+                else:
+                    self.send_error(404, "路径错误")
+            else:
+                self.send_error(404, "页面不存在")
+        except Exception as e:
+            self.server.app_ref.log(f"请求处理错误: {e}")
+            self.send_error(500, f"服务器错误: {e}")
+    
+    def send_folder_list(self):
+        """发送文件夹列表页面"""
+        html = """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>局域网文件共享</title>
+            <style>
+                body { font-family: 'Microsoft YaHei', Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #333; text-align: center; margin-bottom: 30px; }
+                .folder-item { background: #f8f9fa; margin: 10px 0; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff; }
+                .folder-item:hover { background: #e9ecef; }
+                .folder-name { font-weight: bold; color: #007bff; text-decoration: none; font-size: 16px; }
+                .folder-path { color: #6c757d; font-size: 12px; margin-top: 5px; }
+                .footer { text-align: center; margin-top: 30px; color: #6c757d; font-size: 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>📁 局域网文件共享</h1>
+        """
+        
+        for i, folder in enumerate(self.server.shared_folders):
+            folder_name = os.path.basename(folder)
+            html += f'''
+                <div class="folder-item">
+                    <a href="/folder/{i}" class="folder-name">📂 {folder_name}</a>
+                    <div class="folder-path">路径: {folder}</div>
+                </div>
+            '''
+        
+        html += """
+                <div class="footer">
+                    <p>局域网文件夹共享工具 | 请在同一网络环境下访问</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(html.encode('utf-8'))
+    
+    def browse_folder(self, folder_path, sub_path=""):
+        """浏览文件夹内容"""
+        current_path = os.path.join(folder_path, sub_path) if sub_path else folder_path
+        
+        if not os.path.exists(current_path):
+            self.send_error(404, "路径不存在")
+            return
+        
+        folder_index = self.server.shared_folders.index(folder_path)
+        folder_name = os.path.basename(folder_path)
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{folder_name} - 文件浏览</title>
+            <style>
+                body {{ font-family: 'Microsoft YaHei', Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+                .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                .header {{ margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #007bff; }}
+                .breadcrumb {{ background: #e9ecef; padding: 10px; border-radius: 5px; margin-bottom: 20px; }}
+                .breadcrumb a {{ color: #007bff; text-decoration: none; }}
+                .breadcrumb a:hover {{ text-decoration: underline; }}
+                .file-list {{ }}
+                .file-item {{ display: flex; align-items: center; padding: 10px; margin: 5px 0; background: #f8f9fa; border-radius: 5px; }}
+                .file-item:hover {{ background: #e9ecef; }}
+                .file-icon {{ margin-right: 10px; font-size: 20px; }}
+                .file-info {{ flex-grow: 1; }}
+                .file-name {{ font-weight: bold; color: #333; text-decoration: none; }}
+                .file-name:hover {{ color: #007bff; }}
+                .file-size {{ color: #6c757d; font-size: 12px; }}
+                .download-btn {{ background: #007bff; color: white; padding: 5px 10px; border: none; border-radius: 3px; text-decoration: none; font-size: 12px; }}
+                .download-btn:hover {{ background: #0056b3; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>📁 {folder_name}</h1>
+                </div>
+                
+                <div class="breadcrumb">
+                    <a href="/">🏠 首页</a> / 
+                    <a href="/folder/{folder_index}">📂 {folder_name}</a>
+        """
+        
+        # 添加面包屑导航
+        if sub_path:
+            parts = sub_path.split('/')
+            current_sub = ""
+            for part in parts:
+                if part:
+                    current_sub = os.path.join(current_sub, part).replace('\\', '/')
+                    html += f' / <a href="/folder/{folder_index}?path={quote(current_sub)}">📁 {part}</a>'
+        
+        html += """
+                </div>
+                
+                <div class="file-list">
+        """
+        
+        # 如果不是根目录，添加返回上级目录链接
+        if sub_path:
+            parent_path = '/'.join(sub_path.split('/')[:-1]) if '/' in sub_path else ""
+            parent_url = f"/folder/{folder_index}"
+            if parent_path:
+                parent_url += f"?path={quote(parent_path)}"
+            
+            html += f'''
+                <div class="file-item">
+                    <div class="file-icon">⬆️</div>
+                    <div class="file-info">
+                        <a href="{parent_url}" class="file-name">.. (返回上级目录)</a>
+                    </div>
+                </div>
+            '''
+        
+        # 列出目录内容
+        try:
+            items = os.listdir(current_path)
+            items.sort()
+            
+            # 先显示文件夹
+            for item in items:
+                item_path = os.path.join(current_path, item)
+                if os.path.isdir(item_path):
+                    new_sub_path = os.path.join(sub_path, item).replace('\\', '/') if sub_path else item
+                    html += f'''
+                        <div class="file-item">
+                            <div class="file-icon">📁</div>
+                            <div class="file-info">
+                                <a href="/folder/{folder_index}?path={quote(new_sub_path)}" class="file-name">{item}</a>
+                                <div class="file-size">文件夹</div>
+                            </div>
+                        </div>
+                    '''
+            
+            # 再显示文件
+            for item in items:
+                item_path = os.path.join(current_path, item)
+                if os.path.isfile(item_path):
+                    file_size = self.format_file_size(os.path.getsize(item_path))
+                    download_path = os.path.join(sub_path, item).replace('\\', '/') if sub_path else item
+                    
+                    html += f'''
+                        <div class="file-item">
+                            <div class="file-icon">📄</div>
+                            <div class="file-info">
+                                <div class="file-name">{item}</div>
+                                <div class="file-size">{file_size}</div>
+                            </div>
+                            <a href="/download/{folder_index}/{quote(download_path)}" class="download-btn">下载</a>
+                        </div>
+                    '''
+        
+        except PermissionError:
+            html += '<div class="file-item"><div class="file-info">❌ 权限不足，无法访问此目录</div></div>'
+        
+        html += """
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(html.encode('utf-8'))
+    
+    def download_file(self, file_path):
+        """下载文件"""
+        if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            self.send_error(404, "文件不存在")
+            return
+        
+        try:
+            file_size = os.path.getsize(file_path)
+            filename = os.path.basename(file_path)
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Disposition', f'attachment; filename*=UTF-8\'\'{quote(filename)}')
+            self.send_header('Content-Length', str(file_size))
+            self.end_headers()
+            
+            # 记录下载日志
+            self.server.app_ref.log(f"下载文件: {filename}")
+            
+            with open(file_path, 'rb') as f:
+                while True:
+                    data = f.read(8192)
+                    if not data:
+                        break
+                    self.wfile.write(data)
+        
+        except Exception as e:
+            self.server.app_ref.log(f"文件下载错误: {e}")
+            self.send_error(500, f"下载失败: {e}")
+    
+    def format_file_size(self, size):
+        """格式化文件大小"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} TB"
+    
+    def log_message(self, format, *args):
+        """重写日志方法，将HTTP日志发送到GUI"""
+        message = format % args
+        if hasattr(self.server, 'app_ref'):
+            self.server.app_ref.log(f"HTTP: {message}")
+
+def main():
+    # 设置窗口DPI感知（Windows 10/11）
+    try:
+        from ctypes import windll
+        windll.shcore.SetProcessDpiAwareness(1)
+    except:
+        pass
+    
+    root = tk.Tk()
+    app = FolderShareApp(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
